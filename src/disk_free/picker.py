@@ -12,9 +12,50 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import questionary
-from questionary import Choice, Separator
+from prompt_toolkit.formatted_text import FormattedText
+from questionary import Choice, Separator, Style
 
 from .formatter import human_size
+
+# Color scheme for the picker UI. Keys are style classes used in
+# FormattedText tuples below and in the questionary prompt chrome.
+_PICKER_STYLE = Style(
+    [
+        # Chrome (questionary's own parts)
+        ("qmark", "fg:ansicyan bold"),
+        ("question", "bold"),
+        ("pointer", "fg:ansicyan bold"),
+        ("highlighted", "fg:ansicyan bold"),
+        ("selected", "fg:ansigreen bold"),
+        ("separator", "fg:ansiblue bold"),
+        ("instruction", "fg:ansibrightblack"),
+        ("text", ""),
+        ("answer", "fg:ansigreen bold"),
+        # Our custom classes for item content
+        ("item-caution-mark", "fg:ansiyellow bold"),
+        ("item-size-big", "fg:ansired bold"),
+        ("item-size-med", "fg:ansiyellow bold"),
+        ("item-size-sm", "fg:ansigreen"),
+        ("item-label", "bold"),
+        ("item-desc", "fg:ansibrightblack"),
+        ("item-hint", "fg:ansibrightblack italic"),
+        ("item-caution-label", "fg:ansiyellow"),
+        ("sep-caution", "fg:ansiyellow bold"),
+        ("sep-safe", "fg:ansiblue bold"),
+    ]
+)
+
+_GB = 1024**3
+_100_MB = 100 * 1024**2
+
+
+def _size_class(size_bytes: int) -> str:
+    """Return style class name based on size magnitude."""
+    if size_bytes >= _GB:
+        return "class:item-size-big"
+    if size_bytes >= _100_MB:
+        return "class:item-size-med"
+    return "class:item-size-sm"
 
 
 @dataclass(frozen=True)
@@ -36,15 +77,42 @@ class PickerItem:
     safety: str = "safe"
 
 
-def _format_choice_title(item: PickerItem) -> str:
-    """Build the visible text for a single choice row."""
+def _format_choice_title(item: PickerItem) -> FormattedText:
+    """Build a colorized FormattedText title for a single choice row.
+
+    Layout:
+    ``⚠ 20.9G  system-images           Emulator OS images · restore: ...``
+
+    Colors:
+    - caution mark: yellow
+    - size: red (≥1G), yellow (≥100M), green (<100M)
+    - label: bold
+    - description: dim
+    - hint: dim italic
+    """
     size = human_size(item.size_bytes)
-    marker = "⚠ " if item.safety == "caution" else "  "
-    # size | label | description | hint
-    return (
-        f"{marker}{size:>6}  {item.label:<30}  "
-        f"{item.description}  ·  restore: {item.hint}"
-    )
+    parts: list[tuple[str, str]] = []
+
+    # Caution marker (2 visible chars wide for alignment)
+    if item.safety == "caution":
+        parts.append(("class:item-caution-mark", "⚠ "))
+    else:
+        parts.append(("", "  "))
+
+    # Size — colored by magnitude
+    parts.append((_size_class(item.size_bytes), f"{size:>6}"))
+    parts.append(("", "  "))
+
+    # Label — bold (yellow if caution)
+    label_class = "class:item-caution-label" if item.safety == "caution" else "class:item-label"
+    parts.append((label_class, f"{item.label:<30}"))
+    parts.append(("", "  "))
+
+    # Description and hint — dim
+    parts.append(("class:item-desc", item.description))
+    parts.append(("class:item-hint", f"  ·  restore: {item.hint}"))
+
+    return FormattedText(parts)
 
 
 def _build_choices(items: list[PickerItem]) -> list[Choice | Separator]:
@@ -66,9 +134,14 @@ def _build_choices(items: list[PickerItem]) -> list[Choice | Separator]:
         if item.group and item.group != current_group:
             current_group = item.group
             if item.group in caution_groups:
-                choices.append(Separator(f"── {item.group}  (⚠ CAUTION) ──"))
+                sep_title = FormattedText(
+                    [("class:sep-caution", f"── {item.group}  (⚠ CAUTION) ──")]
+                )
             else:
-                choices.append(Separator(f"── {item.group} ──"))
+                sep_title = FormattedText(
+                    [("class:sep-safe", f"── {item.group} ──")]
+                )
+            choices.append(Separator(sep_title))
 
         choices.append(
             Choice(
@@ -105,6 +178,7 @@ def run_picker(items: list[PickerItem]) -> list[PickerItem] | None:
             choices=_build_choices(items),
             qmark="",
             instruction=" ",
+            style=_PICKER_STYLE,
         ).ask()
     except KeyboardInterrupt:
         return None

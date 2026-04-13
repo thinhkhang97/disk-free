@@ -40,23 +40,45 @@ class TestPickerItem:
         assert item.safety == "safe"
 
 
+def _title_text(formatted_text) -> str:  # type: ignore[no-untyped-def]
+    """Extract the plain-text content of a FormattedText title."""
+    return "".join(segment for _, segment in formatted_text)
+
+
 class TestFormatChoiceTitle:
     def test_includes_size_label_and_description(self) -> None:
         item = _item("node_modules", size=1_000_000_000)
-        title = _format_choice_title(item)
-        assert "node_modules" in title
-        assert "node_modules desc" in title
-        assert "regen node_modules" in title
+        text = _title_text(_format_choice_title(item))
+        assert "node_modules" in text
+        assert "node_modules desc" in text
+        assert "regen node_modules" in text
 
     def test_caution_has_warning_marker(self) -> None:
         item = _item("system-images", safety="caution")
-        title = _format_choice_title(item)
-        assert "⚠" in title
+        text = _title_text(_format_choice_title(item))
+        assert "⚠" in text
 
     def test_safe_has_no_warning_marker(self) -> None:
         item = _item("node_modules", safety="safe")
-        title = _format_choice_title(item)
-        assert "⚠" not in title
+        text = _title_text(_format_choice_title(item))
+        assert "⚠" not in text
+
+    def test_caution_applies_caution_style_class(self) -> None:
+        item = _item("system-images", safety="caution")
+        formatted = _format_choice_title(item)
+        styles = [cls for cls, _ in formatted]
+        assert any("caution" in cls for cls in styles)
+
+    def test_size_class_varies_by_magnitude(self) -> None:
+        big = _format_choice_title(_item("x", size=2 * 1024**3))
+        med = _format_choice_title(_item("y", size=500 * 1024**2))
+        sm = _format_choice_title(_item("z", size=10 * 1024**2))
+        big_styles = [cls for cls, _ in big]
+        med_styles = [cls for cls, _ in med]
+        sm_styles = [cls for cls, _ in sm]
+        assert "class:item-size-big" in big_styles
+        assert "class:item-size-med" in med_styles
+        assert "class:item-size-sm" in sm_styles
 
 
 class TestBuildChoices:
@@ -79,14 +101,18 @@ class TestBuildChoices:
     def test_caution_group_header_mentions_caution(self) -> None:
         items = [_item("x", group="Android SDK", safety="caution")]
         choices = _build_choices(items)
-        sep_titles = [c.title for c in choices if isinstance(c, Separator)]
-        assert any("CAUTION" in t or "⚠" in t for t in sep_titles)
+        sep_texts = [
+            _title_text(c.title) for c in choices if isinstance(c, Separator)
+        ]
+        assert any("CAUTION" in t or "⚠" in t for t in sep_texts)
 
     def test_safe_group_header_no_caution_label(self) -> None:
         items = [_item("x", group="Caches", safety="safe")]
         choices = _build_choices(items)
-        sep_titles = [c.title for c in choices if isinstance(c, Separator)]
-        for t in sep_titles:
+        sep_texts = [
+            _title_text(c.title) for c in choices if isinstance(c, Separator)
+        ]
+        for t in sep_texts:
             assert "CAUTION" not in t
 
     def test_choices_preserve_item_order(self) -> None:
