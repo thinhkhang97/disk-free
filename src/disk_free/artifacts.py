@@ -23,17 +23,61 @@ class ArtifactRule:
 
 
 ARTIFACT_RULES: tuple[ArtifactRule, ...] = (
-    ArtifactRule("node_modules", "npm/yarn dependencies", "npm install"),
+    # JavaScript / TypeScript
+    ArtifactRule("node_modules", "npm/yarn/pnpm dependencies", "npm install"),
     ArtifactRule(".next", "Next.js build output", "npm run build"),
+    ArtifactRule(".nuxt", "Nuxt.js build output", "npm run build"),
+    ArtifactRule(".svelte-kit", "SvelteKit build output", "npm run build"),
+    ArtifactRule(".angular", "Angular cache", "ng build"),
+    ArtifactRule(".astro", "Astro build output", "npm run build"),
+    ArtifactRule(".vite", "Vite cache", "vite build"),
+    ArtifactRule(".parcel-cache", "Parcel cache", "parcel build"),
+    ArtifactRule(".cache", "Generic build tool cache", "re-run build"),
+    ArtifactRule(".expo", "Expo cache", "npx expo start"),
+    ArtifactRule(".turbo", "Turborepo cache", "turbo run build"),
     ArtifactRule("dist", "Build output", "npm run build"),
     ArtifactRule("build", "Build output", "npm run build"),
+    ArtifactRule("out", "Build output (Next.js export / IntelliJ)", "re-run build"),
+    # Python
     ArtifactRule(".venv", "Python virtual environment", "python -m venv .venv && pip install -r requirements.txt"),
     ArtifactRule("venv", "Python virtual environment", "python -m venv venv && pip install -r requirements.txt"),
     ArtifactRule("__pycache__", "Python bytecode cache", "auto-generated on import"),
-    ArtifactRule(".expo", "Expo cache", "npx expo start"),
-    ArtifactRule(".turbo", "Turborepo cache", "turbo run build"),
-    ArtifactRule("target", "Rust/Java build output", "cargo build / mvn compile"),
+    ArtifactRule(".pytest_cache", "pytest cache", "auto-generated on test run"),
+    ArtifactRule(".mypy_cache", "mypy type-check cache", "auto-generated on mypy run"),
+    ArtifactRule(".ruff_cache", "ruff lint cache", "auto-generated on ruff run"),
+    ArtifactRule(".tox", "tox environments", "tox"),
+    ArtifactRule(".nox", "nox environments", "nox"),
+    ArtifactRule("htmlcov", "coverage.py HTML report", "coverage html"),
+    ArtifactRule(".eggs", "setuptools build artifacts", "auto-generated on install"),
+    # Rust / Go / Java / Kotlin
+    ArtifactRule("target", "Rust/Java/Scala build output", "cargo build / mvn compile / sbt compile"),
     ArtifactRule(".gradle", "Gradle cache", "gradle build"),
+    # iOS / Swift / macOS
+    ArtifactRule("Pods", "CocoaPods dependencies", "pod install"),
+    ArtifactRule("DerivedData", "Xcode derived data", "auto-generated on Xcode build"),
+    ArtifactRule(".build", "Swift Package Manager build output", "swift build"),
+    # .NET / C#
+    ArtifactRule("bin", ".NET/C++ build output", "dotnet build"),
+    ArtifactRule("obj", ".NET intermediate build output", "dotnet build"),
+    # Flutter / Dart
+    ArtifactRule(".dart_tool", "Dart/Flutter build cache", "flutter pub get"),
+    # Ruby
+    ArtifactRule(".bundle", "Bundler config/cache", "bundle install"),
+    # Elixir
+    ArtifactRule("_build", "Elixir/Mix build output", "mix compile"),
+    ArtifactRule("deps", "Elixir/Mix dependencies", "mix deps.get"),
+    # Haskell
+    ArtifactRule(".stack-work", "Haskell Stack build output", "stack build"),
+    ArtifactRule("dist-newstyle", "Cabal build output", "cabal build"),
+    # Zig
+    ArtifactRule("zig-cache", "Zig build cache", "zig build"),
+    ArtifactRule("zig-out", "Zig build output", "zig build"),
+    # Clojure
+    ArtifactRule(".cpcache", "Clojure CLI classpath cache", "auto-generated on clj run"),
+    # Jupyter
+    ArtifactRule(".ipynb_checkpoints", "Jupyter notebook checkpoints", "auto-generated on save"),
+    # Terraform
+    ArtifactRule(".terraform", "Terraform provider/module cache", "terraform init"),
 )
 
 _ARTIFACT_NAMES: frozenset[str] = frozenset(r.dir_name for r in ARTIFACT_RULES)
