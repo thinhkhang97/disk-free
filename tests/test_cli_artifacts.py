@@ -1,4 +1,4 @@
-"""Tests for CLI artifacts command with --clean flag."""
+"""Tests for CLI inspect command."""
 
 from __future__ import annotations
 
@@ -13,50 +13,64 @@ def _make_file(path: Path, size: int = 1024) -> None:
     path.write_bytes(b"\0" * size)
 
 
-class TestArtifactsCleanFlag:
-    def test_clean_flag_prompts_and_removes(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
-        nm = tmp_path / "app" / "node_modules"
-        _make_file(nm / "x.js")
+class TestInspectCommand:
+    def test_shows_tree_and_artifacts(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+        _make_file(tmp_path / "app" / "node_modules" / "x.js", size=5000)
+        _make_file(tmp_path / "app" / "src" / "main.js", size=100)
 
-        with patch("builtins.input", return_value="y"):
-            main(["artifacts", str(tmp_path), "--clean"])
+        with patch("disk_free.cli.run_picker", return_value=[]):
+            main(["inspect", str(tmp_path), "--show-min", "0"])
+
+        out = capsys.readouterr().out
+        assert "app" in out
+        assert "removable artifact" in out
+
+    def test_picker_called_with_artifacts(self, tmp_path: Path) -> None:
+        _make_file(tmp_path / "proj" / "node_modules" / "x.js", size=5000)
+
+        with patch("disk_free.cli.run_picker", return_value=[]) as mock:
+            main(["inspect", str(tmp_path)])
+
+        mock.assert_called_once()
+        items = mock.call_args[0][0]
+        assert len(items) == 1
+        assert "node_modules" in items[0].label
+
+    def test_no_artifacts_found(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+        _make_file(tmp_path / "src" / "main.py", size=100)
+
+        main(["inspect", str(tmp_path)])
+
+        out = capsys.readouterr().out
+        assert "No removable artifacts" in out
+
+    def test_removes_selected_items(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+        nm = tmp_path / "app" / "node_modules"
+        _make_file(nm / "x.js", size=5000)
+
+        from disk_free.picker import PickerItem
+
+        selected = [
+            PickerItem(
+                path=nm, size_bytes=5000, label="node_modules",
+                description="npm", hint="npm install", group="node_modules",
+            )
+        ]
+
+        with patch("disk_free.cli.run_picker", return_value=selected):
+            main(["inspect", str(tmp_path)])
 
         assert not nm.exists()
         out = capsys.readouterr().out
         assert "Removed" in out
 
-    def test_clean_flag_aborts_on_no(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    def test_picker_cancelled(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
         nm = tmp_path / "app" / "node_modules"
-        _make_file(nm / "x.js")
+        _make_file(nm / "x.js", size=5000)
 
-        with patch("builtins.input", return_value="n"):
-            main(["artifacts", str(tmp_path), "--clean"])
+        with patch("disk_free.cli.run_picker", return_value=None):
+            main(["inspect", str(tmp_path)])
 
         assert nm.exists()
         out = capsys.readouterr().out
-        assert "Aborted" in out
-
-    def test_clean_flag_empty_input_aborts(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
-        nm = tmp_path / "app" / "node_modules"
-        _make_file(nm / "x.js")
-
-        with patch("builtins.input", return_value=""):
-            main(["artifacts", str(tmp_path), "--clean"])
-
-        assert nm.exists()
-
-    def test_no_clean_flag_does_not_prompt(self, tmp_path: Path) -> None:
-        nm = tmp_path / "app" / "node_modules"
-        _make_file(nm / "x.js")
-
-        with patch("builtins.input") as mock_input:
-            main(["artifacts", str(tmp_path)])
-
-        mock_input.assert_not_called()
-        assert nm.exists()
-
-    def test_no_artifacts_skips_prompt(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
-        with patch("builtins.input") as mock_input:
-            main(["artifacts", str(tmp_path), "--clean"])
-
-        mock_input.assert_not_called()
+        assert "Nothing removed" in out

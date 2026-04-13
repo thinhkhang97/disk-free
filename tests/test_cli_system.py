@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from disk_free.cli import main
+from disk_free.picker import PickerItem
 from disk_free.system import Category, SafeTarget
 
 
@@ -15,7 +16,6 @@ def _make_file(path: Path, size: int = 1024) -> None:
 
 
 def _test_categories(tmp_path: Path) -> list[Category]:
-    """Create test categories with targets pointing at tmp_path subdirs."""
     return [
         Category(
             name="Caches",
@@ -35,71 +35,77 @@ def _test_categories(tmp_path: Path) -> list[Category]:
 
 
 class TestSystemCommand:
-    def test_shows_categories(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    def test_shows_items_and_picker(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+        _make_file(tmp_path / "Caches" / "Google" / "data.bin", size=5000)
+
+        cats = _test_categories(tmp_path)
+        with (
+            patch("disk_free.cli.DEFAULT_CATEGORIES", cats),
+            patch("disk_free.cli.run_picker", return_value=[]),
+        ):
+            main(["system"])
+
+        out = capsys.readouterr().out
+        assert "safe-to-remove" in out
+
+    def test_picker_called_with_system_items(self, tmp_path: Path) -> None:
         _make_file(tmp_path / "Caches" / "Google" / "data.bin", size=5000)
         _make_file(tmp_path / "Developer" / "DerivedData" / "build.o", size=3000)
 
         cats = _test_categories(tmp_path)
-        with patch("disk_free.cli.DEFAULT_CATEGORIES", cats):
-            main(["system"])
-
-        out = capsys.readouterr().out
-        assert "Caches" in out
-        assert "Developer" in out
-
-    def test_clean_prompts_per_category(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
-        _make_file(tmp_path / "Caches" / "Google" / "data.bin", size=5000)
-
-        cats = _test_categories(tmp_path)
         with (
             patch("disk_free.cli.DEFAULT_CATEGORIES", cats),
-            patch("builtins.input", return_value=""),
+            patch("disk_free.cli.run_picker", return_value=[]) as mock,
         ):
-            main(["system", "--clean"])
+            main(["system"])
 
-        out = capsys.readouterr().out
-        assert "Caches" in out
+        mock.assert_called_once()
+        items = mock.call_args[0][0]
+        assert len(items) == 2
+        groups = {item.group for item in items}
+        assert "Caches" in groups
+        assert "Developer" in groups
 
-    def test_clean_removes_selected_category(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    def test_removes_selected(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
         google = tmp_path / "Caches" / "Google"
         _make_file(google / "data.bin", size=5000)
 
         cats = _test_categories(tmp_path)
+        selected = [
+            PickerItem(
+                path=google, size_bytes=5000, label="Google",
+                description="Chrome cache", hint="rebuild", group="Caches",
+            )
+        ]
         with (
             patch("disk_free.cli.DEFAULT_CATEGORIES", cats),
-            patch("builtins.input", return_value="1"),
+            patch("disk_free.cli.run_picker", return_value=selected),
         ):
-            main(["system", "--clean"])
+            main(["system"])
 
         assert not google.exists()
         out = capsys.readouterr().out
         assert "Removed" in out
 
-    def test_clean_skips_on_empty_input(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    def test_no_items_found(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+        cats = _test_categories(tmp_path)
+        with patch("disk_free.cli.DEFAULT_CATEGORIES", cats):
+            main(["system"])
+
+        out = capsys.readouterr().out
+        assert "No safe-to-remove" in out
+
+    def test_picker_cancelled(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
         google = tmp_path / "Caches" / "Google"
         _make_file(google / "data.bin", size=5000)
 
         cats = _test_categories(tmp_path)
         with (
             patch("disk_free.cli.DEFAULT_CATEGORIES", cats),
-            patch("builtins.input", return_value=""),
+            patch("disk_free.cli.run_picker", return_value=None),
         ):
-            main(["system", "--clean"])
+            main(["system"])
 
         assert google.exists()
-
-    def test_clean_multiple_categories(self, tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
-        google = tmp_path / "Caches" / "Google"
-        derived = tmp_path / "Developer" / "DerivedData"
-        _make_file(google / "data.bin", size=5000)
-        _make_file(derived / "build.o", size=3000)
-
-        cats = _test_categories(tmp_path)
-        with (
-            patch("disk_free.cli.DEFAULT_CATEGORIES", cats),
-            patch("builtins.input", return_value="1,2"),
-        ):
-            main(["system", "--clean"])
-
-        assert not google.exists()
-        assert not derived.exists()
+        out = capsys.readouterr().out
+        assert "Nothing removed" in out
