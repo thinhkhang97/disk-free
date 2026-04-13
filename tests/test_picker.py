@@ -1,10 +1,12 @@
-"""Tests for interactive picker — pure rendering and state logic."""
+"""Tests for picker item helpers (the interactive part is delegated to questionary)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from disk_free.picker import PickerItem, PickerState, render_picker
+from questionary import Choice, Separator
+
+from disk_free.picker import PickerItem, _build_choices, _format_choice_title
 
 
 def _item(
@@ -23,175 +25,79 @@ def _item(
 
 class TestPickerItem:
     def test_fields(self) -> None:
-        item = _item("node_modules", size=5000, group="Caches")
+        item = _item("node_modules", size=5000, group="Caches", safety="safe")
         assert item.label == "node_modules"
         assert item.size_bytes == 5000
         assert item.group == "Caches"
         assert item.hint == "regen node_modules"
+        assert item.safety == "safe"
+
+    def test_default_safety_is_safe(self) -> None:
+        item = PickerItem(
+            path=Path("/tmp/x"), size_bytes=0, label="x",
+            description="", hint="",
+        )
+        assert item.safety == "safe"
 
 
-class TestPickerState:
-    def test_initial_state(self) -> None:
+class TestFormatChoiceTitle:
+    def test_includes_size_label_and_description(self) -> None:
+        item = _item("node_modules", size=1_000_000_000)
+        title = _format_choice_title(item)
+        assert "node_modules" in title
+        assert "node_modules desc" in title
+        assert "regen node_modules" in title
+
+    def test_caution_has_warning_marker(self) -> None:
+        item = _item("system-images", safety="caution")
+        title = _format_choice_title(item)
+        assert "⚠" in title
+
+    def test_safe_has_no_warning_marker(self) -> None:
+        item = _item("node_modules", safety="safe")
+        title = _format_choice_title(item)
+        assert "⚠" not in title
+
+
+class TestBuildChoices:
+    def test_returns_choice_per_item(self) -> None:
         items = [_item("a"), _item("b"), _item("c")]
-        state = PickerState(items)
-        assert state.cursor == 0
-        assert state.selected == set()
+        choices = _build_choices(items)
+        picks = [c for c in choices if isinstance(c, Choice)]
+        assert len(picks) == 3
 
-    def test_move_down(self) -> None:
-        state = PickerState([_item("a"), _item("b")])
-        state.move(1)
-        assert state.cursor == 1
-
-    def test_move_down_clamps(self) -> None:
-        state = PickerState([_item("a"), _item("b")])
-        state.move(1)
-        state.move(1)
-        assert state.cursor == 1  # can't go past last
-
-    def test_move_up(self) -> None:
-        state = PickerState([_item("a"), _item("b")])
-        state.move(1)
-        state.move(-1)
-        assert state.cursor == 0
-
-    def test_move_up_clamps(self) -> None:
-        state = PickerState([_item("a"), _item("b")])
-        state.move(-1)
-        assert state.cursor == 0
-
-    def test_toggle(self) -> None:
-        state = PickerState([_item("a"), _item("b")])
-        state.toggle(0)
-        assert 0 in state.selected
-        state.toggle(0)
-        assert 0 not in state.selected
-
-    def test_toggle_all(self) -> None:
-        state = PickerState([_item("a"), _item("b"), _item("c")])
-        state.toggle_all()
-        assert state.selected == {0, 1, 2}
-        state.toggle_all()
-        assert state.selected == set()
-
-    def test_selected_items(self) -> None:
-        items = [_item("a"), _item("b"), _item("c")]
-        state = PickerState(items)
-        state.toggle(0)
-        state.toggle(2)
-        result = state.selected_items()
-        assert len(result) == 2
-        assert result[0].label == "a"
-        assert result[1].label == "c"
-
-    def test_selected_bytes(self) -> None:
-        items = [_item("a", size=1000), _item("b", size=2000)]
-        state = PickerState(items)
-        state.toggle(0)
-        state.toggle(1)
-        assert state.selected_bytes == 3000
-
-    def test_scroll_adjusts_on_move(self) -> None:
-        items = [_item(f"item{i}") for i in range(50)]
-        state = PickerState(items, viewport_height=10)
-        for _ in range(15):
-            state.move(1)
-        # cursor should be 15, scroll should have adjusted
-        assert state.cursor == 15
-        assert state.scroll_offset > 0
-        assert state.cursor < state.scroll_offset + state.viewport_height
-
-
-class TestRenderPicker:
-    def test_shows_items(self) -> None:
-        items = [_item("node_modules", size=1_000_000_000, group="Caches")]
-        state = PickerState(items)
-        lines = render_picker(state, term_width=100)
-        text = "\n".join(lines)
-        assert "node_modules" in text
-        assert "node_modules desc" in text
-
-    def test_shows_cursor_marker(self) -> None:
-        items = [_item("a"), _item("b")]
-        state = PickerState(items)
-        lines = render_picker(state, term_width=80)
-        # First item should have cursor marker
-        item_lines = [l for l in lines if "a" in l and "desc" in l]
-        assert any(">" in l for l in item_lines)
-
-    def test_shows_selection(self) -> None:
-        items = [_item("a"), _item("b")]
-        state = PickerState(items)
-        state.toggle(0)
-        lines = render_picker(state, term_width=80)
-        text = "\n".join(lines)
-        assert "[x]" in text  # selected
-        assert "[ ]" in text  # not selected
-
-    def test_shows_group_headers(self) -> None:
-        items = [_item("a", group="Dev"), _item("b", group="Caches")]
-        state = PickerState(items)
-        lines = render_picker(state, term_width=80)
-        text = "\n".join(lines)
-        assert "Dev" in text
-        assert "Caches" in text
-
-    def test_shows_header_with_counts(self) -> None:
-        items = [_item("a", size=1000), _item("b", size=2000)]
-        state = PickerState(items)
-        state.toggle(0)
-        lines = render_picker(state, term_width=80)
-        text = "\n".join(lines)
-        assert "1/2" in text
-
-    def test_shows_keybindings(self) -> None:
-        items = [_item("a")]
-        state = PickerState(items)
-        lines = render_picker(state, term_width=80)
-        text = "\n".join(lines)
-        assert "SPACE" in text
-        assert "ENTER" in text
-        assert "ESC" in text
-
-    def test_shows_hint(self) -> None:
-        items = [_item("nm")]
-        state = PickerState(items)
-        state.cursor = 0
-        lines = render_picker(state, term_width=120)
-        text = "\n".join(lines)
-        assert "regen nm" in text
-
-    def test_viewport_scrolling(self) -> None:
-        items = [_item(f"item{i}") for i in range(50)]
-        state = PickerState(items, viewport_height=10)
-        for _ in range(20):
-            state.move(1)
-        lines = render_picker(state, term_width=80)
-        # Should show item20 (cursor) but not item0
-        text = "\n".join(lines)
-        assert "item20" in text
-
-    def test_empty_items(self) -> None:
-        state = PickerState([])
-        lines = render_picker(state, term_width=80)
-        text = "\n".join(lines)
-        assert "Nothing" in text or "empty" in text or len(lines) > 0
-
-    def test_caution_items_show_marker(self) -> None:
+    def test_inserts_separator_when_group_changes(self) -> None:
         items = [
-            _item("safe_item", safety="safe"),
-            _item("caution_item", safety="caution"),
+            _item("a", group="First"),
+            _item("b", group="First"),
+            _item("c", group="Second"),
         ]
-        state = PickerState(items)
-        lines = render_picker(state, term_width=100)
-        text = "\n".join(lines)
-        # Caution items should have some marker
-        assert "⚠" in text or "[!]" in text or "CAUTION" in text.upper()
+        choices = _build_choices(items)
+        separators = [c for c in choices if isinstance(c, Separator)]
+        assert len(separators) == 2
 
-    def test_safe_items_no_caution_marker(self) -> None:
-        items = [_item("safe_item", safety="safe")]
-        state = PickerState(items)
-        lines = render_picker(state, term_width=100)
-        # No caution markers when all items are safe
-        text = "\n".join(lines)
-        assert "⚠" not in text
-        assert "[!]" not in text
+    def test_caution_group_header_mentions_caution(self) -> None:
+        items = [_item("x", group="Android SDK", safety="caution")]
+        choices = _build_choices(items)
+        sep_titles = [c.title for c in choices if isinstance(c, Separator)]
+        assert any("CAUTION" in t or "⚠" in t for t in sep_titles)
+
+    def test_safe_group_header_no_caution_label(self) -> None:
+        items = [_item("x", group="Caches", safety="safe")]
+        choices = _build_choices(items)
+        sep_titles = [c.title for c in choices if isinstance(c, Separator)]
+        for t in sep_titles:
+            assert "CAUTION" not in t
+
+    def test_choices_preserve_item_order(self) -> None:
+        items = [_item("a"), _item("b"), _item("c")]
+        choices = _build_choices(items)
+        picks = [c for c in choices if isinstance(c, Choice)]
+        # Choice.value is the index we assigned
+        assert [c.value for c in picks] == [0, 1, 2]
+
+    def test_items_without_group_still_appear(self) -> None:
+        items = [_item("a", group=""), _item("b", group="")]
+        choices = _build_choices(items)
+        picks = [c for c in choices if isinstance(c, Choice)]
+        assert len(picks) == 2

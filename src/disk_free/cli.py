@@ -191,6 +191,10 @@ def main(argv: list[str] | None = None) -> None:
             print("No safe-to-remove items found.")
             return
 
+        # Sort categories by total size so the biggest (often caution items
+        # like Android SDK) surface near the top of the picker.
+        results.sort(key=lambda r: r.total_bytes, reverse=True)
+
         # Build picker items from system results
         items: list[PickerItem] = []
         target_lookup: dict[str, tuple[str, str, str, str]] = {}

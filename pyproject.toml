@@ -3,7 +3,9 @@ name = "disk-free"
 version = "0.1.0"
 description = "CLI tool to list subdirectory sizes"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "questionary>=2.0.0",
+]
 
 [project.scripts]
 disk_free = "disk_free.cli:main"
