@@ -19,6 +19,7 @@ from .progress import (
     print_scan_progress,
     print_system_scan_progress,
 )
+from .stale import StaleFile, default_excluded_paths, find_stale_files
 from .system import DEFAULT_CATEGORIES, scan_categories
 
 _SIZE_MULTIPLIERS = {"B": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
@@ -65,6 +66,31 @@ def _artifacts_to_picker_items(
     return items
 
 
+def _stale_to_picker_items(
+    files: list[StaleFile], root: Path,
+) -> list[PickerItem]:
+    """Convert stale files to picker items, always flagged caution."""
+    items: list[PickerItem] = []
+    for f in files:
+        try:
+            rel = f.path.relative_to(root)
+            label = str(rel)
+        except ValueError:
+            label = str(f.path)
+        items.append(
+            PickerItem(
+                path=f.path,
+                size_bytes=f.size_bytes,
+                label=label,
+                description=f.reason,
+                hint="no automatic way to restore — back up first if unsure",
+                group="Stale files",
+                safety="caution",
+            )
+        )
+    return items
+
+
 def _remove_items(items: list[PickerItem]) -> None:
     """Remove selected picker items from disk with progress."""
     total_freed = 0
@@ -74,8 +100,11 @@ def _remove_items(items: list[PickerItem]) -> None:
     for i, item in enumerate(items, 1):
         print_dir_remove_progress(i, len(items), item.size_bytes, item.path)
         try:
-            if item.path.exists():
+            if item.path.is_symlink() or item.path.is_file():
+                item.path.unlink()
+            elif item.path.is_dir():
                 shutil.rmtree(item.path)
+            # Missing paths are silently skipped (already gone).
             total_freed += item.size_bytes
             total_removed += 1
         except OSError as e:
@@ -130,6 +159,42 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "system",
         help="Scan macOS system directories for safe-to-remove caches",
+    )
+
+    stale_parser = sub.add_parser(
+        "stale",
+        help="Find large files you haven't touched in a long time (heuristic)",
+    )
+    stale_parser.add_argument(
+        "path",
+        help="Directory to scan (e.g. ~/Downloads, ~/Library/Caches)",
+    )
+    stale_parser.add_argument(
+        "--min-size",
+        type=str,
+        default="10M",
+        dest="min_size",
+        help="Minimum file size to consider (default: 10M)",
+    )
+    stale_parser.add_argument(
+        "--min-age",
+        type=int,
+        default=90,
+        dest="min_age",
+        help="Minimum age in days since last modification (default: 90)",
+    )
+    stale_parser.add_argument(
+        "--top",
+        type=int,
+        default=30,
+        dest="top",
+        help="How many top candidates to show (default: 30)",
+    )
+    stale_parser.add_argument(
+        "--include-user-data",
+        action="store_true",
+        dest="include_user_data",
+        help="Opt-in to scan Documents/Desktop/Pictures/iCloud — normally skipped",
     )
 
     return parser
@@ -233,6 +298,49 @@ def main(argv: list[str] | None = None) -> None:
 
         total = sum(item.size_bytes for item in items)
         print(f"Found {len(items)} safe-to-remove items ({human_size(total)})\n")
+
+        selected = run_picker(items)
+
+        if selected is None or not selected:
+            print("Nothing removed.")
+            return
+
+        _remove_items(selected)
+
+    if args.command == "stale":
+        target = Path(args.path).expanduser().resolve()
+        if not target.is_dir():
+            print(f"disk_free: not a directory: {target}", file=sys.stderr)
+            sys.exit(1)
+
+        min_size_bytes = _parse_size(args.min_size)
+        excluded = () if args.include_user_data else default_excluded_paths()
+
+        print(
+            f"Scanning {target} for files ≥{args.min_size} "
+            f"untouched ≥{args.min_age}d...",
+            file=sys.stderr,
+        )
+        stale = find_stale_files(
+            target,
+            min_size_bytes=min_size_bytes,
+            min_age_days=args.min_age,
+            top_n=args.top,
+            excluded_paths=excluded,
+            on_scan=print_scan_progress,
+        )
+        finish_scan(len(stale))
+
+        if not stale:
+            print("No stale files found matching those thresholds.")
+            return
+
+        items = _stale_to_picker_items(stale, target)
+        total = sum(item.size_bytes for item in items)
+        print(
+            f"Found {len(items)} stale files ({human_size(total)}).  "
+            "Review carefully — this is a heuristic, not an allowlist.\n"
+        )
 
         selected = run_picker(items)
 
