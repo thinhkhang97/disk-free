@@ -193,16 +193,18 @@ def main(argv: list[str] | None = None) -> None:
 
         # Build picker items from system results
         items: list[PickerItem] = []
-        target_lookup = {}
+        target_lookup: dict[str, tuple[str, str, str, str]] = {}
         for cat in DEFAULT_CATEGORIES:
             for t in cat.targets:
-                target_lookup[str(t.path)] = (cat.name, t.description, t.regenerate_hint)
+                target_lookup[str(t.path)] = (
+                    cat.name, t.description, t.regenerate_hint, t.safety,
+                )
 
         for r in results:
             for entry in r.entries:
-                group, desc, hint = target_lookup.get(
+                group, desc, hint, safety = target_lookup.get(
                     str(entry.path),
-                    (r.category.name, entry.name, ""),
+                    (r.category.name, entry.name, "", "safe"),
                 )
                 items.append(
                     PickerItem(
@@ -212,6 +214,7 @@ def main(argv: list[str] | None = None) -> None:
                         description=desc,
                         hint=hint,
                         group=group,
+                        safety=safety,
                     )
                 )
 

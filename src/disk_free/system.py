@@ -13,11 +13,17 @@ ScanCategoryCallback = Callable[[str, Path], None]
 
 @dataclass(frozen=True)
 class SafeTarget:
-    """A specific directory known to be safe to remove."""
+    """A specific directory known to be removable.
+
+    *safety* is ``"safe"`` (purely regenerable — caches, build outputs)
+    or ``"caution"`` (removable but may contain user work or require
+    significant re-download — e.g. emulator images, VM disks, NDK).
+    """
 
     path: Path
     description: str
     regenerate_hint: str
+    safety: str = "safe"
 
 
 @dataclass(frozen=True)
@@ -184,6 +190,60 @@ DEFAULT_CATEGORIES: list[Category] = [
                 HOME / "Library" / "Logs" / "DiagnosticReports",
                 "macOS crash reports",
                 "Auto-generated",
+            ),
+        ),
+    ),
+    Category(
+        name="Android SDK",
+        description="Android SDK components — review before removing",
+        targets=(
+            SafeTarget(
+                HOME / "Library" / "Android" / "sdk" / "system-images",
+                "Emulator OS images — per API level × architecture",
+                "Re-download via Android Studio SDK Manager; only needed if you run those emulators",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Android" / "sdk" / "ndk",
+                "Native Development Kit (C/C++ toolchain)",
+                "Re-download via SDK Manager; needed for React Native / native Android",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Android" / "sdk" / "build-tools",
+                "Build tools (multiple versions)",
+                "Re-download via SDK Manager; latest version is usually enough",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Android" / "sdk" / "platforms",
+                "Android SDK platforms (per API level)",
+                "Re-download via SDK Manager; only keep API levels you target",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Android" / "sdk" / "sources",
+                "Android framework source code (for IDE nav)",
+                "Re-download via SDK Manager",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Android" / "sdk" / "cmake",
+                "CMake for native Android builds",
+                "Re-download via SDK Manager; only needed for NDK builds",
+                safety="caution",
+            ),
+        ),
+    ),
+    Category(
+        name="App VMs & User Data",
+        description="Virtual machines and app-local persistent data",
+        targets=(
+            SafeTarget(
+                HOME / "Library" / "Application Support" / "Claude" / "vm_bundles",
+                "Claude Desktop VM disk images (rootfs + session data)",
+                "Claude recreates fresh VMs on next use — deletes any work done in Claude's computer-use agent",
+                safety="caution",
             ),
         ),
     ),

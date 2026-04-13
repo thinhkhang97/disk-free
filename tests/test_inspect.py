@@ -106,3 +106,14 @@ class TestDeepScan:
         scanned: list[Path] = []
         deep_scan(tmp_path, depth=1, min_bytes=0, on_scan=lambda p: scanned.append(p))
         assert len(scanned) >= 1
+
+    def test_skips_symlink_loops(self, tmp_path: Path) -> None:
+        """Self-referential symlinks must not cause infinite recursion."""
+        app = tmp_path / "App"
+        app.mkdir()
+        (app / "self").symlink_to(app)
+        _make_file(app / "sub" / "x.bin", size=1000)
+
+        entries = deep_scan(tmp_path, depth=5, min_bytes=0)
+        # Should complete without hanging
+        assert len(entries) == 1

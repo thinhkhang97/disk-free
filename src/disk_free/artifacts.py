@@ -116,14 +116,21 @@ def _walk(
     out: list[Artifact],
     on_scan: ScanCallback | None = None,
 ) -> None:
-    """Recursively scan *directory*, collecting artifacts into *out*."""
+    """Recursively scan *directory*, collecting artifacts into *out*.
+
+    Skips symlinks to avoid loops (e.g. Steam.app has self-referential
+    symlinks that produce infinite path nesting).
+    """
     try:
         children = sorted(directory.iterdir())
-    except PermissionError:
+    except (PermissionError, OSError):
         return
 
     for child in children:
-        if not child.is_dir():
+        try:
+            if child.is_symlink() or not child.is_dir():
+                continue
+        except OSError:
             continue
 
         if on_scan is not None:

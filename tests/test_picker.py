@@ -7,7 +7,9 @@ from pathlib import Path
 from disk_free.picker import PickerItem, PickerState, render_picker
 
 
-def _item(label: str, size: int = 1000, group: str = "") -> PickerItem:
+def _item(
+    label: str, size: int = 1000, group: str = "", safety: str = "safe",
+) -> PickerItem:
     return PickerItem(
         path=Path(f"/tmp/{label}"),
         size_bytes=size,
@@ -15,6 +17,7 @@ def _item(label: str, size: int = 1000, group: str = "") -> PickerItem:
         description=f"{label} desc",
         hint=f"regen {label}",
         group=group,
+        safety=safety,
     )
 
 
@@ -172,3 +175,23 @@ class TestRenderPicker:
         lines = render_picker(state, term_width=80)
         text = "\n".join(lines)
         assert "Nothing" in text or "empty" in text or len(lines) > 0
+
+    def test_caution_items_show_marker(self) -> None:
+        items = [
+            _item("safe_item", safety="safe"),
+            _item("caution_item", safety="caution"),
+        ]
+        state = PickerState(items)
+        lines = render_picker(state, term_width=100)
+        text = "\n".join(lines)
+        # Caution items should have some marker
+        assert "⚠" in text or "[!]" in text or "CAUTION" in text.upper()
+
+    def test_safe_items_no_caution_marker(self) -> None:
+        items = [_item("safe_item", safety="safe")]
+        state = PickerState(items)
+        lines = render_picker(state, term_width=100)
+        # No caution markers when all items are safe
+        text = "\n".join(lines)
+        assert "⚠" not in text
+        assert "[!]" not in text

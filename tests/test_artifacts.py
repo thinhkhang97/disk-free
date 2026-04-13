@@ -94,6 +94,19 @@ class TestFindArtifacts:
         results = find_artifacts(tmp_path)
         assert len(results) == 0
 
+    def test_skips_symlink_loops(self, tmp_path: Path) -> None:
+        """Self-referential symlinks (like Steam.app) must not cause infinite recursion."""
+        app = tmp_path / "App"
+        app.mkdir()
+        # Create a symlink that points back to the app itself
+        (app / "self").symlink_to(app)
+        _make_file(app / "node_modules" / "x.js")
+
+        results = find_artifacts(tmp_path)
+        # Should find the real node_modules, not loop
+        assert len(results) == 1
+        assert results[0].path.name == "node_modules"
+
 
 class TestArtifactDataclass:
     def test_artifact_fields(self) -> None:

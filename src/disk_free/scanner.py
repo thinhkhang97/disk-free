@@ -20,17 +20,20 @@ class DirEntry:
 
 
 def dir_size(path: Path) -> int:
-    """Compute total size of a directory by walking all files."""
+    """Compute total size of a directory by walking all files.
+
+    Does not follow symlinks to avoid loops.
+    """
     total = 0
     try:
-        for dirpath, _dirnames, filenames in os.walk(path):
+        for dirpath, _dirnames, filenames in os.walk(path, followlinks=False):
             for f in filenames:
                 fp = os.path.join(dirpath, f)
                 try:
                     total += os.lstat(fp).st_size
                 except OSError:
                     pass
-    except PermissionError:
+    except (PermissionError, OSError):
         pass
     return total
 

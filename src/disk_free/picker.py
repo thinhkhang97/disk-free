@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import select
 import shutil
 import sys
 import termios
 import tty
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from .formatter import human_size
@@ -18,7 +19,13 @@ _RESERVED_LINES = 6
 
 @dataclass(frozen=True)
 class PickerItem:
-    """An item that can be selected for removal."""
+    """An item that can be selected for removal.
+
+    *safety* is ``"safe"`` (clearly regenerable — caches, build artifacts)
+    or ``"caution"`` (removable but may contain user work, specific
+    configurations, or large re-downloads — e.g. VM disk images, emulator
+    system images, NDK toolchains).
+    """
 
     path: Path
     size_bytes: int
@@ -26,6 +33,7 @@ class PickerItem:
     description: str
     hint: str
     group: str = ""
+    safety: str = "safe"
 
 
 class PickerState:
@@ -100,8 +108,9 @@ def render_picker(state: PickerState, *, term_width: int = 80) -> list[str]:
         marker = ">" if i == state.cursor else " "
         check = "[x]" if i in state.selected else "[ ]"
         size = human_size(item.size_bytes)
+        flag = "⚠" if item.safety == "caution" else " "
 
-        line = f"  {marker} {check} {size:>5}  {item.label:<28} {item.description}"
+        line = f"  {marker} {check} {flag} {size:>5}  {item.label:<28} {item.description}"
         # Truncate to terminal width
         if len(line) > term_width:
             line = line[: term_width - 1]
@@ -138,7 +147,8 @@ def render_picker(state: PickerState, *, term_width: int = 80) -> list[str]:
     lines.append("")
     if 0 <= state.cursor < len(state.items):
         cur = state.items[state.cursor]
-        lines.append(f"  Restore: {cur.hint}")
+        prefix = "  ⚠ CAUTION: " if cur.safety == "caution" else "  Restore: "
+        lines.append(f"{prefix}{cur.hint}")
 
     # Footer
     lines.append("")
@@ -147,34 +157,47 @@ def render_picker(state: PickerState, *, term_width: int = 80) -> list[str]:
     return lines
 
 
-def _read_key() -> str:
-    """Read a single keypress, handling escape sequences for arrow keys."""
-    ch = sys.stdin.read(1)
-    if ch == "\x1b":
-        # Could be ESC or start of arrow key sequence
-        if select.select([sys.stdin], [], [], 0.05)[0]:
-            ch2 = sys.stdin.read(1)
-            if ch2 == "[" and select.select([sys.stdin], [], [], 0.05)[0]:
-                ch3 = sys.stdin.read(1)
-                if ch3 == "A":
-                    return "UP"
-                if ch3 == "B":
-                    return "DOWN"
-            return "ESC"
+def _read_key(fd: int) -> str:
+    """Read a keypress from *fd*, handling escape sequences for arrow keys.
+
+    Uses ``os.read`` on the file descriptor directly to bypass Python's
+    stdin buffering (which would break ``select()``-based lookahead for
+    multi-byte escape sequences like arrow keys).
+    """
+    data = os.read(fd, 1)
+    # Drain any additional bytes sent as part of the same key press
+    # (e.g. arrow keys send 3 bytes: ESC [ A).
+    while select.select([fd], [], [], 0.01)[0]:
+        more = os.read(fd, 1)
+        if not more:
+            break
+        data += more
+
+    s = data.decode("utf-8", errors="ignore")
+
+    if s == "\x1b[A":
+        return "UP"
+    if s == "\x1b[B":
+        return "DOWN"
+    if s == "\x1b":
         return "ESC"
-    if ch == " ":
+    if s == " ":
         return "SPACE"
-    if ch in ("\r", "\n"):
+    if s in ("\r", "\n"):
         return "ENTER"
-    if ch == "\x03":  # Ctrl+C
+    if s == "\x03":  # Ctrl+C
         return "ESC"
-    return ch
+    return s
 
 
 def run_picker(items: list[PickerItem]) -> list[PickerItem] | None:
     """Show interactive picker. Returns selected items, or None if cancelled.
 
     Falls back to None if stdin is not a terminal.
+
+    Uses DEC cursor save/restore (``\\0337`` / ``\\0338``) rather than
+    counting drawn lines — this avoids cursor-math bugs when the picker
+    is near the bottom of the terminal and ``\\r\\n`` causes scrolling.
     """
     if not items:
         return []
@@ -182,44 +205,44 @@ def run_picker(items: list[PickerItem]) -> list[PickerItem] | None:
     if not sys.stdin.isatty():
         return None
 
-    term_h = shutil.get_terminal_size((80, 24)).lines
-    term_w = shutil.get_terminal_size((80, 24)).columns
-    viewport = max(5, term_h - _RESERVED_LINES)
+    term_size = shutil.get_terminal_size((80, 24))
+    term_h, term_w = term_size.lines, term_size.columns
+    viewport = max(5, term_h - _RESERVED_LINES - 2)
 
     state = PickerState(items, viewport_height=viewport)
-    drawn_lines = 0
+
+    # Reserve space: print enough blank lines to force scroll if we're near
+    # the bottom, then move back up and save that cursor position.
+    reserve = viewport + _RESERVED_LINES
+    sys.stderr.write("\n" * reserve)
+    sys.stderr.write(f"\033[{reserve}A")
+    sys.stderr.write("\0337")  # save cursor (DEC)
+    sys.stderr.flush()
 
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
 
     try:
         tty.setraw(fd)
-        # Hide cursor
-        sys.stderr.write("\033[?25l")
+        sys.stderr.write("\033[?25l")  # hide cursor
         sys.stderr.flush()
 
         while True:
-            # Render
             lines = render_picker(state, term_width=term_w)
 
-            # Move cursor up to overwrite previous frame
-            if drawn_lines > 0:
-                sys.stderr.write(f"\033[{drawn_lines}A")
+            # Restore saved position, then clear everything from here to
+            # end of screen. This guarantees a clean slate regardless of
+            # what was drawn in the previous frame.
+            sys.stderr.write("\0338\033[J")
 
-            # Draw lines
-            output = []
-            for line in lines:
-                output.append(f"\033[2K{line}")  # clear line + write
-            # Clear any leftover lines from previous frame
-            for _ in range(max(0, drawn_lines - len(lines))):
-                output.append("\033[2K")
-
-            sys.stderr.write("\r" + "\r\n".join(output) + "\r")
+            # Write lines separated by \r\n (raw mode requires both).
+            for i, line in enumerate(lines):
+                if i > 0:
+                    sys.stderr.write("\r\n")
+                sys.stderr.write(line)
             sys.stderr.flush()
-            drawn_lines = len(lines) + max(0, drawn_lines - len(lines))
 
-            # Read input
-            key = _read_key()
+            key = _read_key(fd)
 
             if key == "UP":
                 state.move(-1)
@@ -237,14 +260,9 @@ def run_picker(items: list[PickerItem]) -> list[PickerItem] | None:
 
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        # Show cursor
-        sys.stderr.write("\033[?25h")
-        # Clear picker area
-        if drawn_lines > 0:
-            sys.stderr.write(f"\033[{drawn_lines}A")
-            for _ in range(drawn_lines):
-                sys.stderr.write("\033[2K\r\n")
-            sys.stderr.write(f"\033[{drawn_lines}A")
+        # Restore cursor position and clear picker area
+        sys.stderr.write("\0338\033[J")
+        sys.stderr.write("\033[?25h")  # show cursor
         sys.stderr.flush()
 
     return state.selected_items()

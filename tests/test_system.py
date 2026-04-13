@@ -44,6 +44,22 @@ class TestCategory:
             assert len(cat.targets) > 0
 
 
+class TestSafeTarget:
+    def test_default_safety_is_safe(self) -> None:
+        t = SafeTarget(Path("/tmp/x"), "desc", "hint")
+        assert t.safety == "safe"
+
+    def test_caution_safety(self) -> None:
+        t = SafeTarget(Path("/tmp/x"), "desc", "hint", safety="caution")
+        assert t.safety == "caution"
+
+    def test_some_default_targets_are_caution(self) -> None:
+        """Android SDK and VM-like targets should be flagged caution."""
+        all_targets = [t for c in DEFAULT_CATEGORIES for t in c.targets]
+        has_caution = any(t.safety == "caution" for t in all_targets)
+        assert has_caution
+
+
 class TestCategoryResult:
     def test_total_bytes(self) -> None:
         from disk_free.scanner import DirEntry

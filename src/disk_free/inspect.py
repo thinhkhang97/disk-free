@@ -49,15 +49,21 @@ def _scan_level(
     min_bytes: int,
     on_scan: ScanCallback | None,
 ) -> list[TreeEntry]:
-    """Scan one level of *directory*, drilling into large children."""
+    """Scan one level of *directory*, drilling into large children.
+
+    Skips symlinks to avoid loops.
+    """
     try:
         children = sorted(directory.iterdir())
-    except PermissionError:
+    except (PermissionError, OSError):
         return []
 
     entries: list[TreeEntry] = []
     for child in children:
-        if not child.is_dir():
+        try:
+            if child.is_symlink() or not child.is_dir():
+                continue
+        except OSError:
             continue
 
         if on_scan is not None:
