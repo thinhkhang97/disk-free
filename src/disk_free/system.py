@@ -165,6 +165,46 @@ DEFAULT_CATEGORIES: list[Category] = [
                 "Telegram desktop cache",
                 "Telegram recreates on use",
             ),
+            SafeTarget(
+                HOME / "Library" / "Caches" / "com.google.antigravity.ShipIt",
+                "Antigravity updater download cache",
+                "App re-downloads next update",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Caches" / "dev.kiro.desktop.ShipIt",
+                "Kiro updater download cache",
+                "App re-downloads next update",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Caches" / "com.electron.ollama.ShipIt",
+                "Ollama updater download cache",
+                "App re-downloads next update",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Caches" / "ledger-live-desktop-updater",
+                "Ledger Live updater cache",
+                "App re-downloads next update",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Caches" / "termius-updater",
+                "Termius updater cache",
+                "App re-downloads next update",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Caches" / "redisinsight-updater",
+                "RedisInsight updater cache",
+                "App re-downloads next update",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Caches" / "com.openai.atlas",
+                "OpenAI Atlas cache",
+                "App recreates on use",
+            ),
+            SafeTarget(
+                HOME / "Library" / "Caches" / "Steam",
+                "Steam client cache",
+                "Steam recreates on launch",
+            ),
         ),
     ),
     Category(
@@ -190,6 +230,72 @@ DEFAULT_CATEGORIES: list[Category] = [
                 HOME / "Library" / "Logs" / "DiagnosticReports",
                 "macOS crash reports",
                 "Auto-generated",
+            ),
+        ),
+    ),
+    Category(
+        name="Dev Tool Caches",
+        description="Package managers and language toolchain caches",
+        targets=(
+            SafeTarget(
+                HOME / ".npm" / "_cacache",
+                "npm package cache",
+                "npm re-downloads on install",
+            ),
+            SafeTarget(
+                HOME / ".cache" / "uv",
+                "uv (Python) package cache",
+                "uv re-downloads on install",
+            ),
+            SafeTarget(
+                HOME / ".cache" / "puppeteer",
+                "Puppeteer Chromium/Chrome binaries",
+                "npx puppeteer browsers install chrome",
+            ),
+            SafeTarget(
+                HOME / ".yarn" / "berry" / "cache",
+                "Yarn Berry package cache",
+                "yarn install re-downloads",
+            ),
+            SafeTarget(
+                HOME / ".bun" / "install" / "cache",
+                "Bun package cache",
+                "bun install re-downloads",
+            ),
+            SafeTarget(
+                HOME / ".cache" / "huggingface" / "hub",
+                "HuggingFace model cache",
+                "Re-downloaded on first use",
+            ),
+            SafeTarget(
+                HOME / ".cache" / "prisma",
+                "Prisma query engine cache",
+                "npx prisma generate re-downloads",
+            ),
+            SafeTarget(
+                HOME / ".minikube" / "cache",
+                "minikube ISO + preloaded images",
+                "minikube re-downloads on start",
+            ),
+            SafeTarget(
+                HOME / ".serverless" / "releases",
+                "Serverless Framework binaries",
+                "Re-downloaded on first run",
+            ),
+            SafeTarget(
+                HOME / ".expo" / "expo-go",
+                "Expo Go dev client",
+                "Re-downloaded on expo start",
+            ),
+            SafeTarget(
+                HOME / ".expo" / "ios-simulator-app-cache",
+                "Expo iOS simulator app cache",
+                "Re-downloaded on next simulator run",
+            ),
+            SafeTarget(
+                HOME / ".expo" / "android-apk-cache",
+                "Expo Android APK cache",
+                "Re-downloaded on next build",
             ),
         ),
     ),
@@ -243,6 +349,42 @@ DEFAULT_CATEGORIES: list[Category] = [
                 HOME / "Library" / "Application Support" / "Claude" / "vm_bundles",
                 "Claude Desktop VM disk images (rootfs + session data)",
                 "Claude recreates fresh VMs on next use — deletes any work done in Claude's computer-use agent",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / ".android" / "avd",
+                "Android emulator virtual devices (AVDs)",
+                "Re-create in Android Studio AVD Manager — any installed apps and data in the emulator are lost",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / ".gemini" / "antigravity" / "browser_recordings",
+                "Antigravity browser session recordings",
+                "Recordings are lost — re-run the sessions to regenerate",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / ".rustup" / "toolchains",
+                "Rust toolchains (multiple versions installed)",
+                "rustup install <version> per toolchain — okay to delete all but the active one",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / ".nvm" / "versions" / "node",
+                "Node.js versions installed via nvm",
+                "nvm install <version> per version — okay to delete versions you don't use",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / ".vscode" / "extensions",
+                "VS Code extensions",
+                "Re-install from Marketplace — extension settings preserved in user profile",
+                safety="caution",
+            ),
+            SafeTarget(
+                HOME / ".cursor" / "extensions",
+                "Cursor extensions",
+                "Re-install from Marketplace",
                 safety="caution",
             ),
         ),

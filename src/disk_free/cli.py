@@ -204,17 +204,26 @@ def main(argv: list[str] | None = None) -> None:
                     cat.name, t.description, t.regenerate_hint, t.safety,
                 )
 
+        home = Path.home()
         for r in results:
             for entry in r.entries:
                 group, desc, hint, safety = target_lookup.get(
                     str(entry.path),
                     (r.category.name, entry.name, "", "safe"),
                 )
+                # Show path relative to home so duplicated basenames
+                # (e.g. .yarn/berry/cache vs .bun/install/cache) are
+                # distinguishable.
+                try:
+                    rel = entry.path.relative_to(home)
+                    label = f"~/{rel}"
+                except ValueError:
+                    label = str(entry.path)
                 items.append(
                     PickerItem(
                         path=entry.path,
                         size_bytes=entry.size_bytes,
-                        label=entry.name,
+                        label=label,
                         description=desc,
                         hint=hint,
                         group=group,

@@ -103,9 +103,10 @@ def _format_choice_title(item: PickerItem) -> FormattedText:
     parts.append((_size_class(item.size_bytes), f"{size:>6}"))
     parts.append(("", "  "))
 
-    # Label — bold (yellow if caution)
+    # Label — bold (yellow if caution). Min width 30, grows as needed.
     label_class = "class:item-caution-label" if item.safety == "caution" else "class:item-label"
-    parts.append((label_class, f"{item.label:<30}"))
+    label_text = item.label if len(item.label) >= 30 else f"{item.label:<30}"
+    parts.append((label_class, label_text))
     parts.append(("", "  "))
 
     # Description and hint — dim
