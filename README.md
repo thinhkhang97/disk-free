@@ -1,46 +1,40 @@
 # disk_free
 
-A CLI tool to list subdirectory sizes at a glance.
+A developer-focused Mac disk cleaner: find build artifacts, system caches, and stale files — with restore hints and caution warnings before touching anything.
+
+> **Note:** This project is no longer actively developed. See [DECISION.md](./DECISION.md) for why.
+
+## Commands
+
+```bash
+# Scan a project directory for removable artifacts (node_modules, .venv, Pods, etc.)
+disk_free inspect ~/Projects/my-app
+
+# Scan macOS system directories (Xcode, Android SDK, app caches, dev tool caches)
+disk_free system
+
+# Find large files untouched for 90+ days
+disk_free stale ~/Projects
+```
 
 ## Installation
 
 ```bash
-uv venv && uv pip install -e .
-```
-
-## Usage
-
-```bash
-# List subdirectory sizes (sorted largest first)
-disk_free ls ~/Projects/Products
-
-# Defaults to current directory
-disk_free ls
-
-# Help
-disk_free --help
-```
-
-### Example output
-
-```
- 2.2G  infina-pfa
- 1.8G  infina-partner-sdk
- 1.3G  infina-pfa-be
- 992M  infina-ai-backend
- 827M  b2c-infina-integration-services
- 312M  infina-ai-dash
- 230M  cloud-quiz
-80.1K  agent-config
-─────  ──────
- 7.7G  total (8 dirs)
+python3 -m venv .venv
+.venv/bin/pip install -e .
 ```
 
 ## Project structure
 
 ```
 src/disk_free/
-├── cli.py          # Argparse entry point
+├── cli.py          # Argparse entry point + orchestration
 ├── scanner.py      # Directory walking and size computation
-└── formatter.py    # Human-readable sizes and table formatting
+├── inspect.py      # Deep tree scan
+├── artifacts.py    # Build artifact detection (ARTIFACT_RULES)
+├── system.py       # Curated macOS system targets (DEFAULT_CATEGORIES)
+├── stale.py        # Age-aware large file discovery
+├── picker.py       # Interactive multi-select UI (questionary)
+├── formatter.py    # Human-readable sizes and tree formatting
+└── progress.py     # Stderr progress indicators
 ```
